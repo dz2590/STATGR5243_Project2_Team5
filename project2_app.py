@@ -92,8 +92,14 @@ def preprocess_dataframe(
     missing_strategy: str,
     scale_method: str,
     encode_categorical: bool,
+    columns_to_drop: list,
 ) -> pd.DataFrame:
     df_clean = df.copy()
+
+    # 0) Drop selected columns
+    if columns_to_drop:
+        existing = [c for c in columns_to_drop if c in df_clean.columns]
+        df_clean = df_clean.drop(columns=existing)
 
     # 1) Remove duplicates
     if remove_duplicates:
@@ -165,6 +171,46 @@ def compare_dataframes(before_df: pd.DataFrame, after_df: pd.DataFrame) -> str:
         f"Duplicate rows: {int(before_df.duplicated().sum())} -> {int(after_df.duplicated().sum())}",
     ]
     return "\n".join(lines)
+
+# Feature Engineering helpers
+
+def apply_unary_transform(series: pd.Series, method: str) -> pd.Series:
+    if method == "log":
+        return np.log(series.replace(0, np.nan))
+    elif method == "log1p":
+        return np.log1p(series)
+    elif method == "sqrt":
+        return np.sqrt(series.clip(lower=0))
+    elif method == "square":
+        return series ** 2
+    elif method == "reciprocal":
+        return 1 / series.replace(0, np.nan)
+    elif method == "abs":
+        return series.abs()
+    elif method == "zscore":
+        return (series - series.mean()) / series.std()
+    elif method == "minmax":
+        mn, mx = series.min(), series.max()
+        return (series - mn) / (mx - mn) if mx != mn else series * 0
+    else:
+        raise ValueError(f"Unknown transform: {method}")
+
+
+def apply_binary_transform(s1: pd.Series, s2: pd.Series, op: str) -> pd.Series:
+    if op == "add":
+        return s1 + s2
+    elif op == "subtract":
+        return s1 - s2
+    elif op == "multiply":
+        return s1 * s2
+    elif op == "divide":
+        return s1 / s2.replace(0, np.nan)
+    elif op == "ratio_pct":
+        total = s1 + s2
+        return (s1 / total.replace(0, np.nan)) * 100
+    else:
+        raise ValueError(f"Unknown operation: {op}")
+
 
 # UI
 
@@ -312,6 +358,16 @@ app_ui = ui.page_fluid(
                     value=False,
                 ),
 
+                ui.tooltip(
+                    ui.input_selectize(
+                        "drop_columns",
+                        "Select columns to remove",
+                        choices=[],
+                        multiple=True,
+                    ),
+                    "Selected columns will be removed from the dataset before other preprocessing steps.",
+                ),
+
                 ui.input_select(
                     "missing_strategy",
                     "Missing value handling",
@@ -375,18 +431,115 @@ app_ui = ui.page_fluid(
 
         ui.nav_panel(
             "Feature Engineering",
-
             ui.layout_sidebar(
                 ui.sidebar(
                     ui.h4("Feature Engineering"),
-                   
+                    ui.p(
+                        "Create new features from existing columns. "
+                        "Apply transformations or combine two columns.",
+                        style="color: #6c757d; margin-bottom: 16px;",
+                    ),
+
                     ui.hr(),
+                    ui.h5("① Single-Column Transform"),
+                    ui.p("Apply a mathematical transformation to one numeric column.",
+                        style="color: #6c757d; font-size: 13px; margin-bottom: 10px;"),
+                    ui.tooltip(
+                        ui.input_select("fe_col", "Select column", choices=[], selected=None),
+                        "Only numeric columns are shown.",
+                    ),
+                    ui.tooltip(
+                        ui.input_select(
+                            "fe_method", "Transformation",
+                            {
+                                "log": "Log (ln x)", "log1p": "Log1p (ln(x+1))",
+                                "sqrt": "Square root (√x)", "square": "Square (x²)",
+                                "reciprocal": "Reciprocal (1/x)", "abs": "Absolute value (|x|)",
+                                "zscore": "Z-score standardization", "minmax": "Min-Max normalization",
+                            },
+                            selected="log1p",
+                        ),
+                        "Choose how to transform the selected column.",
+                    ),
+                    ui.tooltip(
+                        ui.input_text("fe_new_col_name", "New column name", placeholder="e.g. log_age"),
+                        "Leave blank to auto-generate a name.",
+                    ),
+                    ui.input_action_button("fe_apply", "Apply Transform",
+                        class_="btn btn-primary btn-sm", style="width:100%;margin-top:6px;"),
+
+                    ui.hr(),
+                    ui.h5("② Two-Column Interaction"),
+                    ui.p("Combine two numeric columns to create an interaction feature.",
+                        style="color: #6c757d; font-size: 13px; margin-bottom: 10px;"),
+                    ui.tooltip(
+                        ui.input_select("fe_col_a", "Column A", choices=[], selected=None),
+                        "First column for the interaction.",
+                    ),
+                    ui.tooltip(
+                        ui.input_select(
+                            "fe_op", "Operation",
+                            {
+                                "add": "A + B", "subtract": "A − B", "multiply": "A × B",
+                                "divide": "A ÷ B", "ratio_pct": "A / (A+B) × 100%",
+                            },
+                            selected="multiply",
+                        ),
+                        "How to combine the two columns.",
+                    ),
+                    ui.tooltip(
+                        ui.input_select("fe_col_b", "Column B", choices=[], selected=None),
+                        "Second column for the interaction.",
+                    ),
+                    ui.tooltip(
+                        ui.input_text("fe_inter_name", "New column name", placeholder="e.g. age_x_bmi"),
+                        "Leave blank to auto-generate a name.",
+                    ),
+                    ui.input_action_button("fe_apply_inter", "Apply Interaction",
+                        class_="btn btn-primary btn-sm", style="width:100%;margin-top:6px;"),
+
+                    ui.hr(),
+                    ui.h5("③ Binning (Discretization)"),
+                    ui.p("Convert a continuous column into discrete bins.",
+                        style="color: #6c757d; font-size: 13px; margin-bottom: 10px;"),
+                    ui.tooltip(
+                        ui.input_select("fe_bin_col", "Select column", choices=[], selected=None),
+                        "Numeric column to discretize.",
+                    ),
+                    ui.tooltip(
+                        ui.input_slider("fe_bin_n", "Number of bins", min=2, max=20, value=5, step=1),
+                        "How many equal-width bins to create.",
+                    ),
+                    ui.tooltip(
+                        ui.input_text("fe_bin_name", "New column name", placeholder="e.g. age_bin"),
+                        "Leave blank to auto-generate a name.",
+                    ),
+                    ui.input_action_button("fe_apply_bin", "Apply Binning",
+                        class_="btn btn-primary btn-sm", style="width:100%;margin-top:6px;"),
+
+                    ui.hr(),
+                    ui.input_action_button("fe_reset", "Reset All Features",
+                        class_="btn btn-outline-danger btn-sm", style="width:100%;"),
                 ),
 
-                ui.card(
-                    ui.card_header("Output"),
-                  
-                    style="margin-bottom: 20px;",
+                ui.div(
+                    ui.output_ui("fe_status"),
+                    ui.card(
+                        ui.card_header("Before / After Distribution"),
+                        ui.output_plot("fe_plot"),
+                        style="margin-bottom: 20px;",
+                    ),
+                    ui.card(
+                        ui.card_header("Added Features"),
+                        ui.output_ui("fe_added_list"),
+                        style="margin-bottom: 20px;",
+                    ),
+                    ui.card(
+                        ui.card_header("Dataset Preview (with new features)"),
+                        ui.output_ui("fe_preview_notice"),
+                        ui.output_ui("fe_preview_table"),
+                        style="margin-bottom: 20px;",
+                    ),
                 ),
             ),
         ),
@@ -446,21 +599,21 @@ app_ui = ui.page_fluid(
                     ui.card(
                         ui.card_header("Summary Statistics"),
                         ui.output_ui("eda_summary_notice"),
-                        ui.output_table("eda_summary_table"),
+                        ui.output_ui("eda_summary_table"),
                         style="margin-bottom: 20px;",
                     ),
 
                     ui.card(
                         ui.card_header("Correlation Matrix"),
                         ui.output_ui("eda_corr_notice"),
-                        ui.output_table("eda_corr_table"),
+                        ui.output_ui("eda_corr_table"),
                         style="margin-bottom: 20px;",
                     ),
 
                     ui.card(
                         ui.card_header("Filtered Data Preview"),
                         ui.output_ui("eda_preview_notice"),
-                        ui.output_table("eda_preview_table"),
+                        ui.output_ui("eda_preview_table"),
                         style="margin-bottom: 20px;",
                     ),
                 ),
@@ -643,6 +796,7 @@ def server(input, output, session):
                 missing_strategy=input.missing_strategy(),
                 scale_method=input.scale_method(),
                 encode_categorical=input.encode_categorical(),
+                columns_to_drop=list(input.drop_columns() or []),
             )
         except Exception as e:
             return f"ERROR: {str(e)}"
@@ -724,27 +878,254 @@ def server(input, output, session):
                 style="color: #842029; margin: 0;",
             )
 
-        return ui.output_table("processed_preview")
-
-    @render.table
-    def processed_preview():
-        df = processed_dataset()
-
-        if df is None or isinstance(df, str):
-            return pd.DataFrame()
-
-        return df.head(10)
+        preview = df.head(10)
+        th = "".join(
+            f"<th style='padding:6px 12px;text-align:left;border-bottom:2px solid #dee2e6;white-space:nowrap'>{c}</th>"
+            for c in preview.columns
+        )
+        rows = "".join(
+            "<tr>" + "".join(
+                f"<td style='padding:5px 12px;text-align:left;border-bottom:1px solid #f0f0f0;white-space:nowrap'>{v}</td>"
+                for v in row
+            ) + "</tr>"
+            for _, row in preview.iterrows()
+        )
+        return ui.HTML(
+            f"<div style='overflow-x:auto'><table style='border-collapse:collapse;font-size:13px;width:100%'>"
+            f"<thead><tr>{th}</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
     
+    @reactive.effect
+    def _update_drop_columns_choices():
+        df = dataset()
+        if not isinstance(df, pd.DataFrame):
+            return
+        choices = {c: c for c in df.columns.tolist()}
+        ui.update_selectize("drop_columns", choices=choices, session=session)
+
+    # ── FEATURE ENGINEERING ────────────────────────────────────
+
+    fe_df    = reactive.value(None)
+    fe_added = reactive.value([])
+    fe_last  = reactive.value(None)
+
+    @reactive.effect
+    def _fe_sync_base():
+        df = processed_dataset()
+        if isinstance(df, pd.DataFrame):
+            fe_df.set(df.copy())
+            fe_added.set([])
+            fe_last.set(None)
+
+    @reactive.effect
+    def _fe_update_col_choices():
+        df = fe_df.get()
+        if not isinstance(df, pd.DataFrame):
+            return
+        num_cols = df.select_dtypes(include="number").columns.tolist()
+        choices = {c: c for c in num_cols}
+        ui.update_select("fe_col",     choices=choices, session=session)
+        ui.update_select("fe_col_a",   choices=choices, session=session)
+        ui.update_select("fe_col_b",   choices=choices, session=session)
+        ui.update_select("fe_bin_col", choices=choices, session=session)
+
+    @reactive.effect
+    @reactive.event(input.fe_apply)
+    def _fe_apply_transform():
+        df = fe_df.get()
+        if not isinstance(df, pd.DataFrame):
+            return
+        col    = input.fe_col()
+        method = input.fe_method()
+        name   = input.fe_new_col_name().strip() or f"{method}_{col}"
+        if not col:
+            return
+        try:
+            df = df.copy()
+            df[name] = apply_unary_transform(df[col], method)
+            fe_df.set(df)
+            log = fe_added.get().copy()
+            log.append({"type": "transform", "desc": f"{name}  ←  {method}({col})", "before": col, "after": name})
+            fe_added.set(log)
+            fe_last.set({"before": col, "after": name, "error": None})
+        except Exception as e:
+            fe_last.set({"error": str(e)})
+
+    @reactive.effect
+    @reactive.event(input.fe_apply_inter)
+    def _fe_apply_interaction():
+        df = fe_df.get()
+        if not isinstance(df, pd.DataFrame):
+            return
+        col_a = input.fe_col_a()
+        col_b = input.fe_col_b()
+        op    = input.fe_op()
+        op_sym = {"add": "+", "subtract": "-", "multiply": "x", "divide": "div", "ratio_pct": "pct"}
+        name  = input.fe_inter_name().strip() or f"{col_a}_{op_sym.get(op,'op')}_{col_b}"
+        if not col_a or not col_b:
+            return
+        if col_a == col_b:
+            fe_last.set({"error": "Column A and Column B must be different."})
+            return
+        try:
+            df = df.copy()
+            df[name] = apply_binary_transform(df[col_a], df[col_b], op)
+            fe_df.set(df)
+            op_label = {"add": "+", "subtract": "−", "multiply": "×", "divide": "÷", "ratio_pct": "/(A+B)×100%"}
+            log = fe_added.get().copy()
+            log.append({"type": "interaction", "desc": f"{name}  ←  {col_a} {op_label.get(op,op)} {col_b}", "before": col_a, "after": name})
+            fe_added.set(log)
+            fe_last.set({"before": col_a, "after": name, "error": None})
+        except Exception as e:
+            fe_last.set({"error": str(e)})
+
+    @reactive.effect
+    @reactive.event(input.fe_apply_bin)
+    def _fe_apply_binning():
+        df = fe_df.get()
+        if not isinstance(df, pd.DataFrame):
+            return
+        col  = input.fe_bin_col()
+        n    = input.fe_bin_n()
+        name = input.fe_bin_name().strip() or f"{col}_bin{n}"
+        if not col:
+            return
+        try:
+            df = df.copy()
+            df[name] = pd.cut(df[col], bins=n, labels=False)
+            fe_df.set(df)
+            log = fe_added.get().copy()
+            log.append({"type": "binning", "desc": f"{name}  ←  cut({col}, bins={n})", "before": col, "after": name})
+            fe_added.set(log)
+            fe_last.set({"before": col, "after": name, "error": None})
+        except Exception as e:
+            fe_last.set({"error": str(e)})
+
+    @reactive.effect
+    @reactive.event(input.fe_reset)
+    def _fe_reset():
+        df = processed_dataset()
+        if isinstance(df, pd.DataFrame):
+            fe_df.set(df.copy())
+        fe_added.set([])
+        fe_last.set(None)
+
+    @render.ui
+    def fe_status():
+        df = fe_df.get()
+        if not isinstance(df, pd.DataFrame):
+            return ui.p("No dataset loaded. Go to the Load Data tab first.", style="color: #6c757d;")
+        last = fe_last.get()
+        if last is None:
+            return ui.div(
+                ui.strong("Ready. "), "Use the sidebar controls to add new features.",
+                style="background-color:#f8f9fa;padding:10px 14px;border:1px solid #dee2e6;border-radius:8px;margin-bottom:16px;",
+            )
+        if last.get("error"):
+            return ui.div(
+                ui.strong("Error: "), last["error"],
+                style="background-color:#f8d7da;padding:10px 14px;border:1px solid #f5c2c7;border-radius:8px;color:#842029;margin-bottom:16px;",
+            )
+        log = fe_added.get()
+        last_desc = log[-1]["desc"] if log else ""
+        return ui.div(
+            ui.strong("✓ Feature added: "), last_desc,
+            " | ", ui.strong("Total new features: "), str(len(log)),
+            style="background-color:#d1e7dd;padding:10px 14px;border:1px solid #badbcc;border-radius:8px;color:#0f5132;margin-bottom:16px;",
+        )
+
+    @render.plot
+    def fe_plot():
+        last = fe_last.get()
+        df   = fe_df.get()
+        fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+        if last is None or last.get("error") or not isinstance(df, pd.DataFrame):
+            for ax in axes:
+                ax.text(0.5, 0.5, "Apply a transformation to see the before/after chart.",
+                    ha="center", va="center", fontsize=10)
+                ax.axis("off")
+            return fig
+        col_before = last.get("before")
+        col_after  = last.get("after")
+        if col_before not in df.columns or col_after not in df.columns:
+            for ax in axes:
+                ax.axis("off")
+            return fig
+        before_vals = pd.to_numeric(df[col_before], errors="coerce").dropna()
+        after_vals  = pd.to_numeric(df[col_after],  errors="coerce").dropna()
+        axes[0].hist(before_vals, bins=30, color="#6c8ebf", edgecolor="white")
+        axes[0].set_title(f"Before: {col_before}", fontsize=11)
+        axes[0].set_ylabel("Frequency")
+        axes[1].hist(after_vals, bins=30, color="#82b366", edgecolor="white")
+        axes[1].set_title(f"After: {col_after}", fontsize=11)
+        plt.tight_layout()
+        return fig
+
+    @render.ui
+    def fe_added_list():
+        log = fe_added.get()
+        if not log:
+            return ui.p("No features added yet.", style="color: #6c757d; margin: 0;")
+        type_colors = {
+            "transform":   ("#cfe2ff", "#084298"),
+            "interaction": ("#d1e7dd", "#0f5132"),
+            "binning":     ("#fff3cd", "#664d03"),
+        }
+        items = []
+        for i, feat in enumerate(log, 1):
+            bg, fg = type_colors.get(feat["type"], ("#f8f9fa", "#212529"))
+            items.append(ui.div(
+                ui.tags.span(feat["type"].upper(),
+                    style=f"background-color:{bg};color:{fg};font-size:11px;padding:1px 7px;border-radius:10px;font-weight:600;margin-right:8px;"),
+                f"{i}.  {feat['desc']}",
+                style="padding:6px 0;font-size:14px;border-bottom:1px solid #f0f0f0;",
+            ))
+        return ui.div(*items)
+
+    @render.ui
+    def fe_preview_notice():
+        df = fe_df.get()
+        if not isinstance(df, pd.DataFrame):
+            return ui.div()
+        n = len(fe_added.get())
+        msg = f"Showing first 10 rows · {n} new feature(s) added" if n else "Showing first 10 rows"
+        return ui.tags.small(msg, style="color: #6c757d; display: block; margin-bottom: 10px;")
+
+    @render.ui
+    def fe_preview_table():
+        df = fe_df.get()
+        if not isinstance(df, pd.DataFrame):
+            return ui.p("Preview will appear here after a dataset is loaded.", style="color: #6c757d;")
+        log = fe_added.get()
+        new_cols = [f["after"] for f in log if f.get("after") in df.columns]
+        preview = df.head(10)
+        th = "".join(
+            f"<th style='padding:6px 12px;text-align:left;border-bottom:2px solid #dee2e6;white-space:nowrap;background:{'#d1e7dd' if c in new_cols else ''};color:{'#0f5132' if c in new_cols else ''}'>{c}{' ✦' if c in new_cols else ''}</th>"
+            for c in preview.columns
+        )
+        rows = ""
+        for _, row in preview.iterrows():
+            tds = "".join(
+                f"<td style='padding:5px 12px;text-align:left;border-bottom:1px solid #f0f0f0;white-space:nowrap;background:{'#f0faf4' if c in new_cols else ''}'>{v}</td>"
+                for c, v in row.items()
+            )
+            rows += f"<tr>{tds}</tr>"
+        return ui.HTML(
+            f"<div style='overflow-x:auto'><table style='border-collapse:collapse;font-size:13px;width:100%'>"
+            f"<thead><tr>{th}</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
+
     @reactive.calc
     def eda_dataset():
+        # Tab3 → Tab4 联动：优先使用 feature engineering 后的数据
+        fe = fe_df.get()
+        if isinstance(fe, pd.DataFrame):
+            return fe.copy()
         df = processed_dataset()
-
         if df is None:
             return None
-
         if isinstance(df, str):
             return df
-
         return df.copy()
 
     @reactive.calc
@@ -1038,62 +1419,94 @@ def server(input, output, session):
             style="color: #6c757d; display: block; margin-bottom: 10px;",
         )
 
-    @render.table
+    @render.ui
     def eda_summary_table():
         df = eda_filtered_dataset()
-
         if df is None or isinstance(df, str) or df.empty:
-            return pd.DataFrame()
-
+            return ui.p("No data available.", style="color: #6c757d;")
         summary = df.describe(include="all").transpose().reset_index()
-        summary = summary.rename(columns={"index": "column"})
-        return summary.fillna("")
+        summary = summary.rename(columns={"index": "column"}).fillna("")
+        th = "".join(
+            f"<th style='padding:6px 12px;text-align:left;border-bottom:2px solid #dee2e6;white-space:nowrap'>{c}</th>"
+            for c in summary.columns
+        )
+        rows = "".join(
+            "<tr>" + "".join(
+                f"<td style='padding:5px 12px;text-align:left;border-bottom:1px solid #f0f0f0;white-space:nowrap'>{v}</td>"
+                for v in row
+            ) + "</tr>"
+            for _, row in summary.iterrows()
+        )
+        return ui.HTML(
+            f"<div style='overflow-x:auto'><table style='border-collapse:collapse;font-size:13px;width:100%'>"
+            f"<thead><tr>{th}</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
 
     @render.ui
     def eda_corr_notice():
         df = eda_filtered_dataset()
-
         if df is None or isinstance(df, str):
             return ui.div()
-
         return ui.tags.small(
             "Correlation is computed using numeric columns only.",
             style="color: #6c757d; display: block; margin-bottom: 10px;",
         )
 
-    @render.table
+    @render.ui
     def eda_corr_table():
         df = eda_filtered_dataset()
-
         if df is None or isinstance(df, str) or df.empty:
-            return pd.DataFrame()
-
+            return ui.p("No data available.", style="color: #6c757d;")
         num_cols = df.select_dtypes(include=["number"]).columns.tolist()
-
         if len(num_cols) < 2:
-            return pd.DataFrame({"message": ["At least two numeric columns are required."]})
-
-        return df[num_cols].corr().round(3)
+            return ui.p("At least two numeric columns are required.", style="color: #6c757d;")
+        corr = df[num_cols].corr().round(3).reset_index().rename(columns={"index": ""})
+        th = "".join(
+            f"<th style='padding:6px 12px;text-align:left;border-bottom:2px solid #dee2e6;white-space:nowrap'>{c}</th>"
+            for c in corr.columns
+        )
+        rows = "".join(
+            "<tr>" + "".join(
+                f"<td style='padding:5px 12px;text-align:left;border-bottom:1px solid #f0f0f0;white-space:nowrap'>{v}</td>"
+                for v in row
+            ) + "</tr>"
+            for _, row in corr.iterrows()
+        )
+        return ui.HTML(
+            f"<div style='overflow-x:auto'><table style='border-collapse:collapse;font-size:13px;width:100%'>"
+            f"<thead><tr>{th}</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
 
     @render.ui
     def eda_preview_notice():
         df = eda_filtered_dataset()
-
         if df is None or isinstance(df, str):
             return ui.div()
-
         return ui.tags.small(
             "Showing first 10 rows of the filtered processed dataset.",
             style="color: #6c757d; display: block; margin-bottom: 10px;",
         )
 
-    @render.table
+    @render.ui
     def eda_preview_table():
         df = eda_filtered_dataset()
-
         if df is None or isinstance(df, str):
-            return pd.DataFrame()
-
-        return df.head(10)
+            return ui.p("No data available.", style="color: #6c757d;")
+        preview = df.head(10)
+        th = "".join(
+            f"<th style='padding:6px 12px;text-align:left;border-bottom:2px solid #dee2e6;white-space:nowrap'>{c}</th>"
+            for c in preview.columns
+        )
+        rows = "".join(
+            "<tr>" + "".join(
+                f"<td style='padding:5px 12px;text-align:left;border-bottom:1px solid #f0f0f0;white-space:nowrap'>{v}</td>"
+                for v in row
+            ) + "</tr>"
+            for _, row in preview.iterrows()
+        )
+        return ui.HTML(
+            f"<div style='overflow-x:auto'><table style='border-collapse:collapse;font-size:13px;width:100%'>"
+            f"<thead><tr>{th}</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
 
 app = App(app_ui, server)

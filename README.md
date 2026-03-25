@@ -1,5 +1,5 @@
 
-# STATGR5243 Project 2 Team 5  
+# STATGR5243 Project README
 
 # End-to-End Data Analysis Tool
 

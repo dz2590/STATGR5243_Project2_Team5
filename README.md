@@ -7,7 +7,7 @@ This project is an interactive web application built with Shiny using Python tha
 # Project Structure
 
 ```
-├── project2_app.py    # Main Shiny application
+├── project2_app_final.py    # Main Shiny application
 └── README.md          # Documentation
 ```
 ---
@@ -45,7 +45,7 @@ pip install shiny pandas numpy matplotlib seaborn scikit-learn pyreadr openpyxl 
 ### 3. Run the application
 
 ```bash
-shiny run --reload project2_app.py
+shiny run --reload project2_app_final.py
 ```
 
 ### 3. Open in browser the local URL shown in the terminal

@@ -1,21 +1,20 @@
 
 # STATGR5243 Project README
 
-This project is an interactive web application built with Shiny using Python that allows users to complete a data analysis workflow that includes data loading, preprocessing, feature engineering, and exploratory data analysis (EDA). 
+This project is an interactive web application built with Shiny using Python that allows users to complete a data analysis workflow that includes data loading, exploratory data analysis, cleaning/preprocessing, and feature engineering.
 
 ---
 # Project Structure
 
 ```
-.
-├── app.py              # Main Shiny application
+├── project2_app.py    # Main Shiny application
 └── README.md          # Documentation
 ```
 ---
 # Quick Start
 
-## # Requirements
-Python Version: 3.10-3.12
+## Requirements
+Python Version: 3.10-3.12 \
 Packages: shiny, pandas, numpy, matplotlib, seaborn, scikit-learn, pyreadr, openpyxl, pyarrow
 
 ## Set up and Installation
@@ -60,10 +59,12 @@ The app can load CSV, Excel, Parquet, and RDS files.
 For uploaded files, the app automatically detects the file extension and reads the dataset accordingly.
 
 # How to Use: 
+### Step 0 - User Guide
+Within the web application, read the first tab to understand how to use the tool. 
 
-## Step 1 — Load Data
+### Step 1 — Load Data
 
-### Option A: Built-in dataset (recommended for quick testing)
+#### Option A: Built-in dataset (recommended for quick testing)
 
 1. Go to **Load Data**
 2. Select **Built-in dataset**
@@ -75,9 +76,7 @@ You will immediately see:
 * Dataset summary (rows, columns, missing values)
 * Data preview (first 10 rows)
 
----
-
-### Option B: Upload your own dataset
+#### Option B: Upload your own dataset
 
 1. Select **Upload file**
 2. Upload supported formats:
@@ -87,23 +86,26 @@ Notes:
 * Ensure correct file format
 * Large files may take time to load
 
----
+### Step 2 — Exploratory Data Analysis (EDA)
+* Use the EDA tab to inspect the data dictionary, filter rows by selected column variables or specific values, and view descriptive statistics (e.g. mean, median, min, max). 
 
-## Step 2 — Exploratory Data Analysis (EDA)
-Use the EDA tab to inspect the data dictionary, filter rows by selected column vales, and view descriptive statistics. 
+### Step 3 - Visualizations
+* Choose a plot type, select variables, and inspect the numeric correlations between two variables.
+* The available plot types are histogram, box plot, scatter plot, bar chart, and correlation matrix. 
 
-## Step 3 - Visualizations
-Choose a plot type, select variables, and inspect the numeric correlations between two variables.
-The available plot types are histogram, box plot, scatter plot, bar chart, and correlation matrix. 
+### Step 4 - Data Cleaning and Preprocessing
+* Remove duplicates or outliers, impute missing values, encode categorical variables, and scale numeric features.
+* Preview the processed dataset and then download the cleaned data as a csv file.
 
-## Step 4 - Data Cleaning and Preprocessing
-Remove duplicates or outliers, impute missing values, encode categorical variables, and scale numeric features. Preview the processed dataset and then download the cleaned data as a csv file.
+### Step 5 - Feature Engineering
+* Transform one numeric column at a time, combine two numeric columns, or bin / discretize numeric variables.
+* Review the changes by inspecting the before and after distributions of these transformations, and download the final engineered dataset. 
 
-## Step 5 - Feature Engineering
-Transform one numeric column at a time, combine two numeric columns, or bin / discretize numeric variables. Review the changes by inspecting the before and after distributions of these transformations, and download the final engineered dataset. 
-
-
---
+### Contributors: 
+- Fangyi Lin (fl2748) 
+- Zhe Lin (zl3613)
+- Zhanhang Shi (zs2741) 
+- Daisy Zhou (dz2590)
 ---
 
 ```

@@ -1,9 +1,7 @@
 
 # STATGR5243 Project README
 
-# End-to-End Data Analysis Tool
-
-An interactive web application built with **Shiny in Python** that allows users to complete a data analysis workflow that includes data loading, preprocessing, feature engineering, and exploratory data analysis (EDA). 
+This project is an interactive web application built with Shiny using Python that allows users to complete a data analysis workflow that includes data loading, preprocessing, feature engineering, and exploratory data analysis (EDA). 
 
 ---
 # Project Structure

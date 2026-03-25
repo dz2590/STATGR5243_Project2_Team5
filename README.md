@@ -54,6 +54,8 @@ shiny run --reload project2_app_final.py
 http://127.0.0.1:8000
 ```
 ---
+## Alternative Application Acess
+The tool has been deployed to shinyapps.io and can be accessed [here.](https://statgr5243-team5-proj2.shinyapps.io/project2-app12/)
 ## Supported Input Formats
 The app can load CSV, Excel, Parquet, and RDS files.
 For uploaded files, the app automatically detects the file extension and reads the dataset accordingly.
